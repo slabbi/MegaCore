@@ -13,6 +13,7 @@ If you're into "pure" AVR programming, I'm happy to tell you that all relevant k
 * [Link time optimization / LTO](#link-time-optimization--lto)
 * [Printf support](#printf-support)
 * [Pin macros](#pin-macros)
+* [PROGMEM with flash sizes greater than 64kB](#progmem-with-flash-sizes-greater-than-64kb)
 * [Programmers](#programmers)
 * [Write to own flash](#write-to-own-flash)
 * **[How to install](#how-to-install)**
@@ -126,6 +127,43 @@ digitalWrite(PIN_PE0, HIGH);
 
 // Results in the exact same compiled code
 digitalWrite(0, HIGH);
+
+```
+
+## PROGMEM with flash sizes greater than 64kB
+The usual `PROGMEM` attribute stores constant data such as string arrays to flash and is great if you want to preserve the precious RAM. However, PROGMEM will only store content in the lower section, from 0 and up to 64kB. If you want to store data in other sections, you can use `PROGMEM1` (64 - 128kB), `PROGMEM2` (128 - 192kB), or `PROGMEM3` (192 - 256kB), depending on the chip you're using.  
+Accessing this data is not as straight forward as with `PROGMEM`, but it's still doable:
+
+```c
+const char far_away[] PROGMEM1 = "Hello from far away!\n"; // (64  - 128kB)
+const char far_far_away[] PROGMEM2 = "Hello from far, far away!\n"; // (128 - 192kB)
+const char far_far_far_away[] PROGMEM3 = "Hello from far, far, far away!\n"; // (192 - 256kB)
+
+void print_progmem()
+{
+  uint8_t i;
+  char c;
+
+  // Print out far_away
+  for(i = 0; i < sizeof(far_away); i++)
+  {
+    c = pgm_read_byte_far(pgm_get_far_address(far_away) + i);
+    Serial.write(c);
+  }
+
+  // Print out far_far_away
+  for(i = 0; i < sizeof(far_far_away); i++)
+  {
+    c = pgm_read_byte_far(pgm_get_far_address(far_far_away) + i);
+    Serial.write(c);
+  }
+  // Print out far_far_far_away
+  for(i = 0; i < sizeof(far_far_far_away); i++)
+  {
+    c = pgm_read_byte_far(pgm_get_far_address(far_far_far_away) + i);
+    Serial.write(c);
+  }
+}
 
 ```
 
