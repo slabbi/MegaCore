@@ -195,7 +195,7 @@ function install_ide() {
     return_handler "$ARDUINO_CI_SCRIPT_FAILURE_EXIT_STATUS"
   fi
 
-  # Generate an array declaration string containing a list all Arduino IDE versions which support CLI (1.5.2+ according to https://github.com/arduino/Arduino/blob/master/build/shared/manpage.adoc#history)
+  # Generate an array declaration string containing a list all available Arduino IDE versions which support CLI
   # Save the current folder
   local -r previousFolder="$PWD"
   cd "$ARDUINO_CI_SCRIPT_TEMPORARY_FOLDER"
@@ -204,13 +204,27 @@ function install_ide() {
   cd Arduino
   git remote add origin https://github.com/arduino/Arduino.git
   if [[ "$startIDEversion" != "1.6.2" ]] && [[ "$startIDEversion" != "1.6.2" ]]; then
-    # Arduino IDE 1.6.2 has the nasty behavior of moving the included hardware cores to the .arduino15 folder, causing those versions to be used for all builds after Arduino IDE 1.6.2 is used. For that reason, 1.6.2 will only be installed if explicitly specified in the install_ide version arguments
+    # See "Arduino IDE version blocklist" documentation below
     local -r IDEversion162regex=--regex='refs/tags/1\.6\.2'
     if [[ "$ARDUINO_CI_SCRIPT_VERBOSITY_LEVEL" -gt 0 ]]; then
       echo "NOTE: Due to not playing nicely with other versions, Arduino IDE 1.6.2 will not be installed unless explicitly specified in the version arguments."
     fi
   fi
-  local -r ARDUINO_CI_SCRIPT_FULL_IDE_VERSION_LIST_ARRAY="${ARDUINO_CI_SCRIPT_IDE_VERSION_LIST_ARRAY_DECLARATION}'(\"$(git ls-remote --quiet --tags --refs | grep --invert-match --regexp='refs/tags/1\.0' --regexp='refs/tags/1\.5$' --regexp='refs/tags/1\.5\.1$' --regexp='refs/tags/1\.5\.4-r2$' --regexp='refs/tags/1\.5\.5-r2$' --regexp='refs/tags/1\.5\.7-macosx-java7$' --regexp='refs/tags/1\.5\.8-macosx-java7$' ${IDEversion162regex} --regexp='refs/tags/1\.6\.5-r2$' --regexp='refs/tags/1\.6\.5-r3$' | grep --regexp='refs/tags/[0-9]\+\.[0-9]\+\.[0-9]\+\(\(-.*$\)\|$\)' | cut --delimiter='/' --fields=3 | sort --version-sort | sed ':a;N;$!ba;s/\n/\" \"/g')\")'"
+
+  # Arduino IDE tag blocklist:
+  # <1.5.2: no CLI (https://github.com/arduino/Arduino/blob/master/build/shared/manpage.adoc#history)
+  # 1.5.4-r2: Not available for download
+  # 1.5.5-r2: Not available for download
+  # 1.5.7-macosx-java7: Not available for download
+  # 1.5.8-macosx-java7: Not available for download
+  # 1.6.2: has the nasty behavior of moving the included hardware cores to the .arduino15 folder, causing those versions to be used for all builds after Arduino IDE 1.6.2 is used. For that reason, 1.6.2 will only be installed if explicitly specified in the install_ide version arguments
+  # 1.6.5-r2: Not available for download
+  # 1.6.5-r3: Not available for download
+  # 1.6.5-r2: Not available for download
+  # 1.6.5-r3: Not available for download
+  # 1.8.11-ms-store-1: Not available for download
+  # 1.8.13-ms-store-1: Not available for download
+  local -r ARDUINO_CI_SCRIPT_FULL_IDE_VERSION_LIST_ARRAY="${ARDUINO_CI_SCRIPT_IDE_VERSION_LIST_ARRAY_DECLARATION}'(\"$(git ls-remote --quiet --tags --refs | grep --invert-match --regexp='refs/tags/1\.0' --regexp='refs/tags/1\.5$' --regexp='refs/tags/1\.5\.1$' --regexp='refs/tags/1\.5\.4-r2$' --regexp='refs/tags/1\.5\.5-r2$' --regexp='refs/tags/1\.5\.7-macosx-java7$' --regexp='refs/tags/1\.5\.8-macosx-java7$' ${IDEversion162regex} --regexp='refs/tags/1\.6\.5-r2$' --regexp='refs/tags/1\.6\.5-r3$' --regexp='refs/tags/.*-ms-store.*$' | grep --regexp='refs/tags/[0-9]\+\.[0-9]\+\.[0-9]\+\(\(-.*$\)\|$\)' | cut --delimiter='/' --fields=3 | sort --version-sort | sed ':a;N;$!ba;s/\n/\" \"/g')\")'"
   cd ..
   # Remove the temporary repo
   rm Arduino --recursive --force
@@ -534,13 +548,35 @@ function install_package() {
       if [[ "$packageURL" != "" ]]; then
         # Get the current Additional Boards Manager URLs preference value so it won't be overwritten when the new URL is added
         local priorBoardsmanagerAdditionalURLs
+        local getPrefExitStatus
+        # arduino --get-pref returns 4 when the preference does not exist, which is an acceptable circumstance. So it's necessary to unset errexit
+        set +o errexit
         if [[ "$ARDUINO_CI_SCRIPT_VERBOSITY_LEVEL" -eq 0 ]]; then
-          priorBoardsmanagerAdditionalURLs=$("${ARDUINO_CI_SCRIPT_APPLICATION_FOLDER}/${ARDUINO_CI_SCRIPT_IDE_INSTALLATION_FOLDER}/${ARDUINO_CI_SCRIPT_ARDUINO_COMMAND}" --get-pref boardsmanager.additional.urls 2>/dev/null | tail --lines=1)
+          priorBoardsmanagerAdditionalURLs=$(
+            "${ARDUINO_CI_SCRIPT_APPLICATION_FOLDER}/${ARDUINO_CI_SCRIPT_IDE_INSTALLATION_FOLDER}/${ARDUINO_CI_SCRIPT_ARDUINO_COMMAND}" --get-pref boardsmanager.additional.urls 2>/dev/null | tail --lines=1
+            exit "${PIPESTATUS[0]}"
+          )
+          getPrefExitStatus="$?"
         elif [[ "$ARDUINO_CI_SCRIPT_VERBOSITY_LEVEL" -eq 1 ]]; then
-          priorBoardsmanagerAdditionalURLs=$("${ARDUINO_CI_SCRIPT_APPLICATION_FOLDER}/${ARDUINO_CI_SCRIPT_IDE_INSTALLATION_FOLDER}/${ARDUINO_CI_SCRIPT_ARDUINO_COMMAND}" --get-pref boardsmanager.additional.urls | tail --lines=1)
+          priorBoardsmanagerAdditionalURLs=$(
+            "${ARDUINO_CI_SCRIPT_APPLICATION_FOLDER}/${ARDUINO_CI_SCRIPT_IDE_INSTALLATION_FOLDER}/${ARDUINO_CI_SCRIPT_ARDUINO_COMMAND}" --get-pref boardsmanager.additional.urls | tail --lines=1
+            exit "${PIPESTATUS[0]}"
+          )
+          getPrefExitStatus="$?"
         else
-          priorBoardsmanagerAdditionalURLs=$("${ARDUINO_CI_SCRIPT_APPLICATION_FOLDER}/${ARDUINO_CI_SCRIPT_IDE_INSTALLATION_FOLDER}/${ARDUINO_CI_SCRIPT_ARDUINO_COMMAND}" --get-pref boardsmanager.additional.urls | tee /dev/tty | tail --lines=1)
+          priorBoardsmanagerAdditionalURLs=$(
+            "${ARDUINO_CI_SCRIPT_APPLICATION_FOLDER}/${ARDUINO_CI_SCRIPT_IDE_INSTALLATION_FOLDER}/${ARDUINO_CI_SCRIPT_ARDUINO_COMMAND}" --get-pref boardsmanager.additional.urls | tee /dev/tty | tail --lines=1
+            exit "${PIPESTATUS[0]}"
+          )
+          getPrefExitStatus="$?"
         fi
+        set -o errexit
+
+        if [[ "$getPrefExitStatus" == "4" ]]; then
+          # No boardsmanager.additional.urls preference was set. This causes priorBoardsmanagerAdditionalURLs to have a garbage value with Arduino IDE 1.8.10 and newer.
+          priorBoardsmanagerAdditionalURLs=""
+        fi
+
         local -r blankregex="^[ ]*$"
         if [[ "$priorBoardsmanagerAdditionalURLs" =~ $blankregex ]]; then
           # There is no previous Additional Boards Manager URLs preference value
@@ -1215,39 +1251,72 @@ ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER=$((ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER +
 readonly ARDUINO_CI_SCRIPT_CHECK_FOLDER_NAME_INVALID_CHARACTER_EXIT_STATUS=$ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER
 ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER=$((ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER + 1))
 readonly ARDUINO_CI_SCRIPT_CHECK_FOLDER_NAME_TOO_LONG_EXIT_STATUS=$ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER
+readonly ARDUINO_CI_SCRIPT_CHECK_FOLDER_NAME_LAST_EXIT_STATUS=$ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER
 # The same folder name restrictions apply to libraries and sketches so this function may be used for both
-function check_folder_name() {
-  local -r path="$1"
-  # Get the folder name from the path
-  local -r folderName="${path##*/}"
+function check_name() {
+  local -r name="$1"
 
   local exitStatus=$ARDUINO_CI_SCRIPT_SUCCESS_EXIT_STATUS
 
   # Starting folder name with a number is only supported by Arduino IDE 1.8.4 and newer
   local -r startsWithNumberRegex="^[0-9]"
-  if [[ "$folderName" =~ $startsWithNumberRegex ]]; then
-    echo "WARNING: Discouraged folder name: ${folderName}. Folder name beginning with a number is only supported by Arduino IDE 1.8.4 and newer."
+  if [[ "$name" =~ $startsWithNumberRegex ]]; then
+    echo "WARNING: Discouraged folder name: ${name}. Folder name beginning with a number is only supported by Arduino IDE 1.8.4 and newer."
   fi
 
   # Starting folder name with a - or . is not allowed
   local -r startsWithInvalidCharacterRegex="^[-.]"
-  if [[ "$folderName" =~ $startsWithInvalidCharacterRegex ]]; then
-    echo "ERROR: Invalid folder name: ${folderName}. Folder name beginning with a - or . is not allowed."
+  if [[ "$name" =~ $startsWithInvalidCharacterRegex ]]; then
+    echo "Invalid folder name: ${name}. Folder name beginning with a - or . is not allowed."
     exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_FOLDER_NAME_INVALID_FIRST_CHARACTER_EXIT_STATUS)
   fi
 
   # Allowed characters: a-z, A-Z, 0-1, -._
   local -r disallowedCharactersRegex="[^a-zA-Z0-9._-]"
-  if [[ "$folderName" =~ $disallowedCharactersRegex ]]; then
-    echo "ERROR: Invalid folder name: ${folderName}. Only letters, numbers, dots, dashes, and underscores are allowed."
+  if [[ "$name" =~ $disallowedCharactersRegex ]]; then
+    echo "Invalid folder name: ${name}. Only letters, numbers, dots, dashes, and underscores are allowed."
     exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_FOLDER_NAME_INVALID_CHARACTER_EXIT_STATUS)
   fi
 
   # <64 characters
-  if [[ ${#folderName} -gt 63 ]]; then
-    echo "ERROR: Folder name $folderName exceeds the maximum of 63 characters."
+  if [[ ${#name} -gt 63 ]]; then
+    echo "Folder name $name exceeds the maximum of 63 characters."
     exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_FOLDER_NAME_TOO_LONG_EXIT_STATUS)
   fi
+  return "$exitStatus"
+}
+
+function check_folder_name() {
+  local -r path="$1"
+  # Get the folder name from the path
+  local -r folderName="${path##*/}"
+
+  check_name "$folderName"
+  return "$?"
+}
+
+ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER=$((ARDUINO_CI_SCRIPT_CHECK_FOLDER_NAME_LAST_EXIT_STATUS + 1))
+readonly ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_NAME_RESERVED_NAME_EXIT_STATUS=$ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER
+function check_library_properties_name() {
+  local -r name="$1"
+
+  local exitStatus=$ARDUINO_CI_SCRIPT_SUCCESS_EXIT_STATUS
+
+  # Check if the library.properties name value starts with "arduino" (case-insensitive)
+  # https://github.com/arduino/Arduino/wiki/Arduino-IDE-1.5:-Library-specification#libraryproperties-file-format
+  local -r ReservedNameRegex="^arduino"
+  # Libraries with reserved names added to the Library Manager index before the enactment of the rule are grandfathered
+  local -r GrandfatheredNameRegex="^(Arduino Learning Board)|(Arduino LoRaWAN)|(Arduino OPL2)|(Arduino POST HTTP Parser)|(Arduino Smart Watch)|(arduino-async-modem)|(arduino-display-lcdkeypad)|(arduino-ess)|(arduino-fsm)|(Arduino-I2C-KM1)|(arduino-managed-serial-device)|(arduino-menusystem)|(arduino-NVM)|(arduino-sht)|(arduino-timer)|(arduino-timer-api)|(Arduino-Websocket-Fast)|(ArduinoArcherPanelClient)|(ArduinoBlue)|(ArduinoCloudStorage)|(ArduinoComponents)|(ArduinoESPAT)|(ArduinoFacil)|(arduinoFFT)|(ArduinoFritzApi)|(ArduinoHttpServer)|(ArduinoIHC)|(ArduinoINA219)|(ArduinoIRC)|(ArduinoJson)|(ArduinoLang)|(ArduinoLearningKitStarter)|(ArduinoLog)|(ArduinoMenu library)|(ArduinoMqtt)|(ArduinoOSC)|(ArduinoOTA)|(ArduinoQueue)|(ArduinoSensors)|(ArduinoSerialToTCPBridgeClient)|(ArduinoSTL)|(ArduinoTEA5767)|(ArduinoThread)|(ArduinoThreadRunOnce)|(ArduinoTrace)|(ArduinoUniqueID)|(ArduinoUnit)|(ArduinoUserInterface)|(arduinoVNC)|(ArduinoWebsockets)$"
+  if [[ "${name,,}" =~ $ReservedNameRegex ]] && ! [[ "$name" =~ $GrandfatheredNameRegex ]]; then
+    exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_NAME_RESERVED_NAME_EXIT_STATUS)
+  fi
+
+  # Library Manager installs libraries to a folder that is the name field value with any spaces replaced with _
+  local -r libraryManagerFolderName="${name// /_}"
+
+  check_name "$libraryManagerFolderName"
+  exitStatus=$(set_exit_status "$exitStatus" $?)
+
   return "$exitStatus"
 }
 
@@ -1329,10 +1398,11 @@ function check_sketch_structure() {
     check_folder_name "$sketchPath"
     local checkFolderNameExitStatus=$?
     if [[ $checkFolderNameExitStatus -ne $ARDUINO_CI_SCRIPT_SUCCESS_EXIT_STATUS ]]; then
+      echo "ERROR: ${sketchPath}: Invalid folder name."
       exitStatus=$(set_exit_status "$exitStatus" $((ARDUINO_CI_SCRIPT_CHECK_SKETCH_STRUCTURE_CHECK_FOLDER_NAME_OFFSET + checkFolderNameExitStatus)))
     fi
 
-  done <<<"$(find "$normalizedSearchPath" -type f \( -iname '*.ino' -or -iname '*.pde' \) -printf '%h\n' | sort --unique)"
+  done <<<"$(find "$normalizedSearchPath" -type f \( -iname '*.ino' -or -iname '*.pde' \) -printf '%h\n' | sort --dictionary-order --unique)"
   return "$exitStatus"
 }
 
@@ -1417,6 +1487,7 @@ function check_library_structure() {
     check_folder_name "$normalizedLibraryPath"
     local checkFolderNameExitStatus=$?
     if [[ $checkFolderNameExitStatus -ne $ARDUINO_CI_SCRIPT_SUCCESS_EXIT_STATUS ]]; then
+      echo "ERROR: ${normalizedLibraryPath}: Invalid folder name."
       exitStatus=$(set_exit_status "$exitStatus" $((ARDUINO_CI_SCRIPT_CHECK_LIBRARY_STRUCTURE_CHECK_FOLDER_NAME_OFFSET + checkFolderNameExitStatus)))
     fi
 
@@ -1429,7 +1500,7 @@ function check_library_structure() {
 
       echo "ERROR: ${spuriousDotFolderPath}: Causes the Arduino IDE to display a spurious folder warning."
       exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_LIBRARY_STRUCTURE_SPURIOUS_DOT_FOLDER_EXIT_STATUS)
-    done <<<"$(find "$normalizedLibraryPath" -maxdepth 1 -type d -regex '^.*/\..*$' -not -name '.git' -not -name '.github' -not -name '.svn' -not -name '.hg' -not -name '.bzr' -not -name '.vscode')"
+    done <<<"$(find "$normalizedLibraryPath" -maxdepth 1 -type d -regex '^.*/\..*$' -not -name '.git' -not -name '.github' -not -name '.svn' -not -name '.hg' -not -name '.bzr' -not -name '.vscode' | sort --dictionary-order)"
 
     # Check for incorrect spelling of extras folder
     if [[ $(find "$normalizedLibraryPath" -maxdepth 1 -type d -and -iregex '^.*/extras?$') && ! $(find "$normalizedLibraryPath" -maxdepth 1 -type d -and -name 'extras') ]]; then
@@ -1439,8 +1510,8 @@ function check_library_structure() {
     fi
 
     # Check for incorrect spelling of examples folder
-    if [[ $(find "$normalizedLibraryPath" -maxdepth 1 -type d -and -iregex '^.*/examples?$') && ! $(find "$normalizedLibraryPath" -maxdepth 1 -type d -and -name 'examples') ]]; then
-      echo "ERROR: ${normalizedLibraryPath}: Incorrect examples folder name. It should be spelled exactly \"examples\". See: https://github.com/arduino/Arduino/wiki/Arduino-IDE-1.5:-Library-specification#library-examples"
+    if [[ $(find "$normalizedLibraryPath" -regextype posix-extended -maxdepth 1 -type d -and -iregex '^.*/(examples?)|(exampels?)$') && ! $(find "$normalizedLibraryPath" -maxdepth 1 -type d -and -name 'examples') ]]; then
+      echo "ERROR: ${normalizedLibraryPath}: Incorrect examples folder name. It should be spelled exactly \"examples\". Incorrect examples folder name will cause importing the library to Arduino Web Editor to fail and examples to not be available in Arduino Web Editor for Library Manager libraries. See: https://github.com/arduino/Arduino/wiki/Arduino-IDE-1.5:-Library-specification#library-examples"
       exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_LIBRARY_STRUCTURE_INCORRECT_EXAMPLES_FOLDER_NAME_EXIT_STATUS)
     fi
 
@@ -1465,7 +1536,7 @@ function check_library_structure() {
 
         echo "ERROR: ${normalizedLibraryPropertiesPath}: Stray file. library.properties should be located in the library root folder."
         exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_LIBRARY_STRUCTURE_STRAY_LIBRARY_PROPERTIES_EXIT_STATUS)
-      done <<<"$(find "$normalizedLibraryPath/src" -maxdepth 1 -type f -iname 'library.properties')"
+      done <<<"$(find "$normalizedLibraryPath/src" -maxdepth 1 -type f -iname 'library.properties' | sort --dictionary-order)"
     fi
 
     # Check for missing keywords.txt file
@@ -1483,12 +1554,12 @@ function check_library_structure() {
 
         echo "ERROR: ${keywordsTxtPath}: Stray file. keywords.txt should be located in the library root folder."
         exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_LIBRARY_STRUCTURE_STRAY_KEYWORDS_TXT_EXIT_STATUS)
-      done <<<"$(find "$normalizedLibraryPath/src" -maxdepth 1 -type f -iname 'keywords.txt')"
+      done <<<"$(find "$normalizedLibraryPath/src" -maxdepth 1 -type f -iname 'keywords.txt' | sort --dictionary-order)"
     fi
 
     # Check for sketch files outside of the src or extras folders
     if [[ $(find "$normalizedLibraryPath" -maxdepth 1 -path './examples' -prune -or -path './extras' -prune -or \( -type f -and \( -iname '*.ino' -or -iname '*.pde' \) \)) ]]; then
-      echo "ERROR: ${normalizedLibraryPath}: Sketch files found outside the examples and extras folders."
+      echo "ERROR: ${normalizedLibraryPath}: Sketch files found outside the examples and extras folders. Sketches outside the examples folder will cause importing the library to Arduino Web Editor to fail."
       exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_LIBRARY_STRUCTURE_STRAY_SKETCH_EXIT_STATUS)
     fi
 
@@ -1508,7 +1579,7 @@ function check_library_structure() {
       fi
     fi
 
-  done <<<"$(find "$normalizedBasePath" -mindepth "$depth" -maxdepth "$depth" -type d)"
+  done <<<"$(find "$normalizedBasePath" -mindepth "$depth" -maxdepth "$depth" -type d | sort --dictionary-order)"
 
   return "$exitStatus"
 }
@@ -1578,7 +1649,9 @@ function check_field_name_case() {
 ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER=1
 readonly ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_REDUNDANT_PARAGRAPH_EXIT_STATUS=$ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER
 ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER=$((ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER + 1))
-readonly ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_BLANK_NAME=$ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER
+readonly ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_BLANK_NAME_EXIT_STATUS=$ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER
+# For backwards compatibility. Some releases of arduino-ci-script used this variable name that didn't follow the standard form.
+readonly ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_BLANK_NAME=$ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_BLANK_NAME_EXIT_STATUS
 ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER=$((ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER + 1))
 readonly ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_INVALID_ARCHITECTURE_EXIT_STATUS=$ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER
 ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER=$((ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER + 1))
@@ -1679,7 +1752,7 @@ function check_library_properties() {
         echo "ERROR: ${foundLibraryPropertiesPath}: Incorrect filename case. This causes it to not be recognized on a filename case-sensitive OS such as Linux. It must be exactly \"library.properties\"."
         exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_INCORRECT_FILENAME_CASE_EXIT_STATUS)
       fi
-    done <<<"$(find "$normalizedLibraryPropertiesPath" -maxdepth 1 -type f -iname 'library.properties')"
+    done <<<"$(find "$normalizedLibraryPropertiesPath" -maxdepth 1 -type f -iname 'library.properties' | sort --dictionary-order)"
 
     # Check whether the folder contains a library.properties file
     if [[ "$libraryPropertiesFound" == false ]]; then
@@ -1703,15 +1776,17 @@ function check_library_properties() {
       # Check for blank name value
       if [[ "$nameValue" == "" ]]; then
         echo "ERROR: ${normalizedLibraryPropertiesPath}/library.properties: Has an undefined name field."
-        exitStatus=$(set_exit_status "$exitStatus" $((ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_BLANK_NAME + checkFolderNameExitStatus)))
+        exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_BLANK_NAME_EXIT_STATUS)
       else
         # Check for invalid name value
-        # Library Manager installs libraries to a folder that is the name field value with any spaces replaced with _
-        local libraryManagerFolderName="${nameValue// /_}"
-        check_folder_name "$libraryManagerFolderName"
-        local checkFolderNameExitStatus=$?
-        if [[ $checkFolderNameExitStatus -ne $ARDUINO_CI_SCRIPT_SUCCESS_EXIT_STATUS ]]; then
-          echo "WARNING: ${normalizedLibraryPropertiesPath}/library.properties: Name value $nameValue does not meet the requirements of the Arduino Library Manager indexer. See: https://github.com/arduino/Arduino/wiki/Arduino-IDE-1.5:-Library-specification#libraryproperties-file-format"
+        check_library_properties_name "$nameValue"
+        local checkLibraryPropertiesNameExitStatus=$?
+        if [[ $checkLibraryPropertiesNameExitStatus -ne $ARDUINO_CI_SCRIPT_SUCCESS_EXIT_STATUS ]]; then
+          if [[ "$checkLibraryPropertiesNameExitStatus" == "$ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_NAME_RESERVED_NAME_EXIT_STATUS" ]]; then
+            echo "WARNING: ${normalizedLibraryPropertiesPath}/library.properties: name value: $nameValue starts with \"arduino\". These names are reserved for official Arduino libraries. Libraries using a reserved name will not be accepted in the Library Manager index."
+          else
+            echo "WARNING: ${normalizedLibraryPropertiesPath}/library.properties: name value: $nameValue does not meet the requirements of the Arduino Library Manager indexer. See: https://github.com/arduino/Arduino/wiki/Arduino-IDE-1.5:-Library-specification#libraryproperties-file-format"
+          fi
         fi
       fi
     fi
@@ -1840,7 +1915,7 @@ function check_library_properties() {
         exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_ARCHITECTURES_EMPTY_EXIT_STATUS)
       else
         # Check for invalid architectures
-        local validArchitecturesRegex='^((\*)|(avr)|(sam)|(samd)|(stm32f4)|(nrf52)|(i586)|(i686)|(arc32)|(win10)|(esp8266)|(esp32)|(ameba)|(arm)|(efm32)|(FP51)|(iot2000)|(megaavr)|(msp430)|(navspark)|(nRF5)|(nRF51822)|(nRF52832)|(particle-photon)|(particle-electron)|(particle-core)|(pic)|(pic32)|(RFduino)|(Seeed_STM32F4)|(Simblee)|(solox)|(stm32)|(stm)|(STM32)|(STM32F1)|(STM32F3)|(STM32F4)|(STM32F2)|(STM32L1)|(STM32L4)|(teensy)|(x86))$'
+        local validArchitecturesRegex='^((\*)|(ameba)|(arm)|(arc32)|(avr)|(efm32)|(esp32)|(esp8266)|(FP51)|(i586)|(i686)|(iot2000)|(mbed)|(megaavr)|(mraa)|(msp430)|(navspark)|(nRF5)|(nRF51822)|(nrf52)|(nRF52832)|(particle-photon)|(particle-electron)|(particle-core)|(pic)|(pic32)|(RFduino)|(sam)|(samd)|(samd_beta)|(Seeed_STM32F4)|(Simblee)|(solox)|(stm)|(STM32)|(stm32)|(STM32F1)|(STM32F2)|(STM32F3)|(STM32F4)|(stm32f4)|(STM32L1)|(STM32L4)|(teensy)|(win10)|(x86))$'
         # Split string on ,
         IFS=','
         local validArchitectureFound=false
@@ -1985,7 +2060,7 @@ function check_library_properties() {
       exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_LDFLAGS_MISSPELLED_EXIT_STATUS)
     fi
 
-  done <<<"$(find "$normalizedLibraryPropertiesSearchPath" -maxdepth "$maximumSearchDepth" -type d)"
+  done <<<"$(find "$normalizedLibraryPropertiesSearchPath" -maxdepth "$maximumSearchDepth" -type d | sort --dictionary-order)"
 
   return "$exitStatus"
 }
@@ -2070,7 +2145,7 @@ function check_keywords_txt() {
         echo "ERROR: ${foundKeywordsTxtPath}: Incorrect filename case, which causes it to not be recognized on a filename case-sensitive OS such as Linux. It must be exactly \"keywords.txt\"."
         exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_KEYWORDS_TXT_INCORRECT_FILENAME_CASE_EXIT_STATUS)
       fi
-    done <<<"$(find "$normalizedKeywordsTxtPath" -maxdepth 1 -type f -iname 'keywords.txt')"
+    done <<<"$(find "$normalizedKeywordsTxtPath" -maxdepth 1 -type f -iname 'keywords.txt' | sort --dictionary-order)"
 
     # Check whether the folder contains a keywords.txt file
     if [[ "$keywordsTxtFound" == false ]]; then
@@ -2147,6 +2222,7 @@ function check_keywords_txt() {
         # Strip leading whitespace. This is ignored by the Arduino IDE (even tabs)
         local keywordsTxtLineFrontStripped="${keywordsTxtLine#"${keywordsTxtLine%%[![:space:]]*}"}"
         # Change tabs to the field separator character for line splitting
+        # shellcheck disable=SC2206
         local keywordsTxtLineSwappedTabs=(${keywordsTxtLineFrontStripped//$'\t'/$fieldSeparator})
 
         # KEYWORD is the 1st field
@@ -2250,7 +2326,7 @@ function check_keywords_txt() {
       done <<<"$keywordsTxtCRline"
     done <"${normalizedKeywordsTxtPath}/keywords.txt"
 
-  done <<<"$(find "$normalizedKeywordsTxtSearchPath" -maxdepth "$maximumSearchDepth" -type d)"
+  done <<<"$(find "$normalizedKeywordsTxtSearchPath" -maxdepth "$maximumSearchDepth" -type d | sort --dictionary-order)"
 
   return "$exitStatus"
 }
@@ -2270,6 +2346,8 @@ readonly ARDUINO_CI_SCRIPT_CHECK_LIBRARY_MANAGER_COMPLIANCE_NAME_HAS_INVALID_CHA
 readonly ARDUINO_CI_SCRIPT_CHECK_LIBRARY_MANAGER_COMPLIANCE_NAME_TOO_LONG_EXIT_STATUS=$((ARDUINO_CI_SCRIPT_CHECK_LIBRARY_MANAGER_COMPLIANCE_CHECK_FOLDER_NAME_OFFSET + ARDUINO_CI_SCRIPT_CHECK_FOLDER_NAME_TOO_LONG_EXIT_STATUS))
 ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER=$((ARDUINO_CI_SCRIPT_CHECK_LIBRARY_MANAGER_COMPLIANCE_NAME_TOO_LONG_EXIT_STATUS + 1))
 readonly ARDUINO_CI_SCRIPT_CHECK_LIBRARY_MANAGER_COMPLIANCE_BLANK_URL_EXIT_STATUS=$ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER
+ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER=$((ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER + 1))
+readonly ARDUINO_CI_SCRIPT_CHECK_LIBRARY_MANAGER_COMPLIANCE_NAME_IS_RESERVED_EXIT_STATUS=$ARDUINO_CI_SCRIPT_EXIT_STATUS_COUNTER
 function check_library_manager_compliance() {
   local -r libraryPath="$1"
   # Replace backslashes with slashes
@@ -2306,20 +2384,25 @@ function check_library_manager_compliance() {
     exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_LIBRARY_MANAGER_COMPLIANCE_SYMLINK_FOUND_EXIT_STATUS)
   fi
 
-  # Check for characters in the library.properties name value disallowed by the Library Manager indexer
+  # Check for problems with library.properties
   if [[ -f "$normalizedLibraryPath/library.properties" ]]; then
     # Get rid of the CRs
     local libraryProperties
     libraryProperties=$(tr "\r" "\n" <"$normalizedLibraryPath/library.properties")
     local nameValue
     nameValue="$(get_library_properties_field_value "$libraryProperties" 'name')"
-    # Library Manager installs libraries to a folder that is the name field value with any spaces replaced with _
-    local -r libraryManagerFolderName="${nameValue// /_}"
-    check_folder_name "$libraryManagerFolderName"
-    local -r checkFolderNameExitStatus=$?
-    if [[ $checkFolderNameExitStatus -ne $ARDUINO_CI_SCRIPT_SUCCESS_EXIT_STATUS ]]; then
-      echo "ERROR: ${normalizedLibraryPath}/library.properties: name value: $nameValue does not meet the requirements of the Arduino Library Manager indexer. See: https://github.com/arduino/Arduino/wiki/Arduino-IDE-1.5:-Library-specification#libraryproperties-file-format"
-      exitStatus=$(set_exit_status "$exitStatus" $((ARDUINO_CI_SCRIPT_CHECK_LIBRARY_MANAGER_COMPLIANCE_CHECK_FOLDER_NAME_OFFSET + checkFolderNameExitStatus)))
+
+    # Check if the library.properties name value meets the requirements of the Library Manager indexer
+    check_library_properties_name "$nameValue"
+    local -r checkLibraryPropertiesNameExitStatus=$?
+    if [[ $checkLibraryPropertiesNameExitStatus -ne $ARDUINO_CI_SCRIPT_SUCCESS_EXIT_STATUS ]]; then
+      if [[ "$checkLibraryPropertiesNameExitStatus" == "$ARDUINO_CI_SCRIPT_CHECK_LIBRARY_PROPERTIES_NAME_RESERVED_NAME_EXIT_STATUS" ]]; then
+        echo "ERROR: ${normalizedLibraryPath}/library.properties: name value: $nameValue starts with \"arduino\". These names are reserved for official Arduino libraries."
+        exitStatus=$(set_exit_status "$exitStatus" $ARDUINO_CI_SCRIPT_CHECK_LIBRARY_MANAGER_COMPLIANCE_NAME_IS_RESERVED_EXIT_STATUS)
+      else
+        echo "ERROR: ${normalizedLibraryPath}/library.properties: name value: $nameValue does not meet the requirements of the Arduino Library Manager indexer. See: https://github.com/arduino/Arduino/wiki/Arduino-IDE-1.5:-Library-specification#libraryproperties-file-format"
+        exitStatus=$(set_exit_status "$exitStatus" $((ARDUINO_CI_SCRIPT_CHECK_LIBRARY_MANAGER_COMPLIANCE_CHECK_FOLDER_NAME_OFFSET + checkLibraryPropertiesNameExitStatus)))
+      fi
     fi
 
     local urlValue
@@ -2330,6 +2413,76 @@ function check_library_manager_compliance() {
     fi
   fi
 
+  return "$exitStatus"
+}
+
+function check_code_formatting() {
+  local -r strictness="$1"
+  local -r excludedPathList="$2"
+  local -r targetPath="$3"
+
+  local -r astyleConfigurationFolder="etc/astyle-configurations"
+  local -r astyleConfigurationExtension=".conf"
+
+  # Fold the output in the Travis CI log
+  echo -e -n 'travis_fold:start:check_code_formatting\r'
+
+  if [[ $strictness -lt 1 ]] || [[ $strictness -gt 3 ]]; then
+    echo "ERROR: Invalid strictness parameter value. Valid values are 1 (least strict) - 3 (most strict)"
+    return "$ARDUINO_CI_SCRIPT_FAILURE_EXIT_STATUS"
+  fi
+
+  if ! [[ -d "$targetPath" ]]; then
+    echo "ERROR: targetPath doesn't exist"
+    return "$ARDUINO_CI_SCRIPT_FAILURE_EXIT_STATUS"
+  fi
+
+  local scriptFolder
+  # https://stackoverflow.com/a/246128
+  local scriptSource="${BASH_SOURCE[0]}"
+  while [ -h "$scriptSource" ]; do # Resolve $scriptSource until the file is no longer a symlink
+    scriptFolder="$(cd -P "$(dirname "$scriptSource")" >/dev/null 2>&1 && pwd)"
+    scriptSource="$(readlink "$scriptSource")"
+    [[ $scriptSource != /* ]] && scriptSource="$scriptFolder/$scriptSource" # If $scriptSource was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+  done
+  scriptFolder="$(cd -P "$(dirname "$scriptSource")" >/dev/null 2>&1 && pwd)"
+
+  # Assemble the find options for the excluded paths from the list
+  for excludedPath in ${excludedPathList//,/ }; do
+    excludeOptions="$excludeOptions -path $excludedPath -prune -or"
+  done
+
+  local astylePath
+  astylePath=$(command -v astyle)
+  if [[ ! -e "$astylePath" ]]; then
+    # Install astyle
+    # Save the current folder
+    local -r previousFolder="$PWD"
+    mkdir --parents "${ARDUINO_CI_SCRIPT_APPLICATION_FOLDER}/astyle"
+    wget --no-verbose $ARDUINO_CI_SCRIPT_QUIET_OPTION --output-document="${ARDUINO_CI_SCRIPT_TEMPORARY_FOLDER}/astyle.tar.gz" "https://iweb.dl.sourceforge.net/project/astyle/astyle/astyle%203.1/astyle_3.1_linux.tar.gz"
+    tar --extract --file="${ARDUINO_CI_SCRIPT_TEMPORARY_FOLDER}/astyle.tar.gz" --directory="${ARDUINO_CI_SCRIPT_APPLICATION_FOLDER}"
+    cd "${ARDUINO_CI_SCRIPT_APPLICATION_FOLDER}/astyle/build/gcc"
+    eval "make $ARDUINO_CI_SCRIPT_VERBOSITY_REDIRECT"
+    astylePath="${ARDUINO_CI_SCRIPT_APPLICATION_FOLDER}/astyle/build/gcc/bin/astyle"
+    # Return to the previous folder
+    cd "$previousFolder"
+  fi
+
+  # Set default exit status
+  exitStatus="$ARDUINO_CI_SCRIPT_SUCCESS_EXIT_STATUS"
+
+  while read -r filename; do
+    # Check if it's a file (find matches on pruned folders)
+    if [[ -f "$filename" ]]; then
+      if ! diff --strip-trailing-cr "$filename" <("${astylePath}" --options="${scriptFolder}/${astyleConfigurationFolder}/${strictness}${astyleConfigurationExtension}" --dry-run <"$filename"); then
+        echo "ERROR: Non-compliant code formatting in $filename"
+        # Make the function fail
+        exitStatus="$ARDUINO_CI_SCRIPT_FAILURE_EXIT_STATUS"
+      fi
+    fi
+  done <<<"$(eval "find $targetPath -regextype posix-extended $excludeOptions \( -iregex '.*\.((ino)|(h)|(hpp)|(hh)|(hxx)|(h\+\+)|(cpp)|(cc)|(cxx)|(c\+\+)|(cp)|(c)|(ipp)|(ii)|(ixx)|(inl)|(tpp)|(txx)|(tpl))$' -and -type f \)")"
+
+  echo -e -n 'travis_fold:end:check_code_formatting\r'
   return "$exitStatus"
 }
 

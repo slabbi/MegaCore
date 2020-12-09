@@ -10,6 +10,7 @@ If you're into "pure" AVR programming, I'm happy to tell you that all relevant k
 * [Supported clock frequencies](#supported-clock-frequencies)
 * [Bootloader option](#bootloader-option)
 * [BOD option](#bod-option)
+* [EEPROM retain option](#eeprom-option)
 * [Link time optimization / LTO](#link-time-optimization--lto)
 * [Printf support](#printf-support)
 * [Pin macros](#pin-macros)
@@ -85,7 +86,7 @@ You might experience upload issues when using the internal oscillator. It's fact
 | 1 MHz       | Internal oscillator         | 9600   | Derived from the 8 MHz internal oscillator        |
 
 ## Bootloader option
-MegaCore lets you select which serial port you want to use for uploading. UART0 is the default port for all targets, but UART1 may also be used for uploading.
+MegaCore lets you select which serial port you want to use for uploading. UART0 is the default port for all targets, but any hardware serial port may be used.
 If your application doesn't need or require a bootloader for uploading code you can also choose to disable this by selecting *No bootloader*. This frees 1024 bytes of flash memory.
 
 Note that you have need to connect a programmer and hit **Burn bootloader** if you want to change any of the *Upload port settings*.
@@ -105,6 +106,10 @@ Brown out detection, or BOD for short lets the microcontroller sense the input v
 |                     |                 |               | 2.6V             |
 |                     |                 |               | 2.5V             |
 | Disabled            | Disabled        | Disabled      | Disabled         |
+
+
+## EEPROM option
+If you want the EEPROM to be erased every time you burn the bootloader or upload using a programmer, you can turn off this option. You'll have to connect an ISP programmer and hit "Burn bootloader" to enable or disable EEPROM retain. Note that when uploading using a bootloader, the EEPROM will always be retained.
 
 
 ## Link time optimization / LTO
